@@ -1,0 +1,6 @@
+{
+    "ollama_url": "http://localhost:11434",
+    "model_name": "mistral-small",
+    "api_endpoint": "/api/generate",
+    "max_prs_per_page": "100"
+}
