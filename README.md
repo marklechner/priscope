@@ -4,6 +4,8 @@ PRIscope is a Python-based tool designed to analyze the history of code changes 
 
 <img src="_assets/sample.png" alt="example" width="800"/>
 
+**IMPORTANT DISCLAIMER:** PRIscope's effectiveness may be limited when using models with small context window sizes. For optimal performance, please refer to the "Ollama Configuration for Larger Context Windows" section below.
+
 ## Features
 
 - Fetches and analyzes the most recent merged pull requests from a specified GitHub repository.
@@ -40,7 +42,6 @@ PRIscope is a Python-based tool designed to analyze the history of code changes 
 ## Configuration
 
 Edit the `config.json` file to set your preferences:
-
 
 ## Usage
 
@@ -90,6 +91,37 @@ I recommend using the `mistral-small` model with Ollama for several reasons:
 2. It offers a good balance between performance and resource requirements.
 
 However, you can experiment with other models by changing the `model_name` in the `config.json` file.
+
+## Ollama Configuration for Larger Context Windows
+
+By default, Ollama templates are configured with a context window of 2048 tokens. However, this can be quite small when analyzing larger PRs. It is highly recommended to extend this context window for better performance.
+
+To increase the context window size:
+
+1. Generate the model config:
+   ```
+   ollama show mistral-small --modelfile > ollama_conf.txt
+   ```
+
+2. Edit the `ollama_conf.txt` file by appending the following line right below the `FROM ...` line:
+   ```
+   PARAMETER num_ctx 32768
+   ```
+   This sets the context window to 128k tokens (the maximum for mistral-small).
+
+3. Build a new model template:
+   ```
+   ollama create mistral-small-128K -f ollama_conf.txt
+   ```
+
+4. Update your `config.json` file with the new model name:
+   ```json
+   {
+     "model_name": "mistral-small-128K"
+   }
+   ```
+
+A sample `ollama_conf.txt` file is included in the repository for reference.
 
 ## Contributing
 
