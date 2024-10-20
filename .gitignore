@@ -1,2 +1,5 @@
 priscope_report_compromised_*.json
 __pycache__
+.mypy_cache
+pyproject.toml
+setup.py

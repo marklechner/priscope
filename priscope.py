@@ -52,57 +52,54 @@ def get_merged_prs(repo_url, limit=None, since=None):
     owner = parts[-2]
     repo = parts[-1]
 
-    # GitHub API endpoint for pull requests
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
+    # GitHub Search API endpoint for merged pull requests
+    api_url = f"https://api.github.com/search/issues"
 
     # Parameters for the API request
     params = {
-        "state": "closed",
+        "q": f"repo:{owner}/{repo} is:pr is:merged",
         "sort": "updated",
-        "direction": "desc",
+        "order": "desc",
         "per_page": CONFIG["max_prs_per_page"],
     }
+
+    if since:
+        params["q"] += f" merged:>={since.isoformat()}"
 
     merged_prs = []
     page = 1
 
     while True:
         params["page"] = page
-        response = requests.get(api_url, params=params)
+        response = requests.get(api_url, params=params, headers={"Accept": "application/vnd.github.v3+json"})
 
         if response.status_code != 200:
-            print(
-                f"Error: Unable to fetch pull requests. Status code: {response.status_code}"
-            )
+            print(f"Error: Unable to fetch pull requests. Status code: {response.status_code}")
             return []
 
-        pull_requests = response.json()
+        search_results = response.json()
+        pull_requests = search_results.get("items", [])
 
         if not pull_requests:
             break
 
         for pr in pull_requests:
-            if pr["merged_at"]:
-                merged_at = datetime.strptime(pr["merged_at"], "%Y-%m-%dT%H:%M:%SZ")
-                if since and merged_at < since:
-                    return merged_prs
+            # Fetch additional PR details
+            pr_details = requests.get(pr["pull_request"]["url"]).json()
+            pr_info = {
+                "number": pr["number"],
+                "title": pr["title"],
+                "description": pr["body"],
+                "merged_at": pr_details["merged_at"],
+                "diff": get_pr_diff(pr_details["diff_url"]),
+            }
+            merged_prs.append(pr_info)
 
-                # Fetch additional PR details
-                pr_details = requests.get(pr["url"]).json()
-                pr_info = {
-                    "number": pr["number"],
-                    "title": pr["title"],
-                    "description": pr_details["body"],
-                    "merged_at": pr["merged_at"],
-                    "diff": get_pr_diff(pr["diff_url"]),
-                }
-                merged_prs.append(pr_info)
-
-                if limit and len(merged_prs) >= limit:
-                    return merged_prs
+            if limit and len(merged_prs) >= limit:
+                return merged_prs
 
         # Check if there's a next page
-        if "next" not in response.links:
+        if page * CONFIG["max_prs_per_page"] >= search_results["total_count"]:
             break
 
         page += 1
@@ -111,11 +108,14 @@ def get_merged_prs(repo_url, limit=None, since=None):
 
 
 def analyze_pr_with_ollama(pr_info):
+    #print(pr_info)
     ollama_url = f"{CONFIG['ollama_url']}{CONFIG['api_endpoint']}"
     prompt = f"""
-    Analyze the following pull request for potential security risks or malicious code changes and provide brief summary of the findings as a single paragraph.
-    If no security risks or malicious changes are found, respond only with: "No issues identified."
-    Only if something suspicious is found provide a brief explanation of the potential risks or malicious changes detected.
+    Carefully analyze the following pull request for actual security risks or malicious code changes. Focus only on significant security issues, such as the introduction of vulnerabilities, hardcoded secrets, backdoors, insecure configurations, or risky dependencies.
+    
+    If the changes do not represent a clear and actionable security risk, respond only with: "No issues identified."
+    
+    Only provide a brief summary if a security risk or malicious change is clearly identified and explain why it is a risk, based on concrete indicators such as unsafe functions, insecure patterns, or sensitive data exposure.
 
     PR Number: {pr_info['number']}
     Title: {pr_info['title']}
@@ -133,6 +133,8 @@ def analyze_pr_with_ollama(pr_info):
         return analysis
     else:
         return f"Error analyzing PR: {response.status_code}"
+
+    #return "testing"
 
 
 def generate_json_report(repo_url, analyzed_prs, suspicious_count):
